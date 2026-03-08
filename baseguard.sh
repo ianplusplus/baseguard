@@ -591,7 +591,7 @@ compare() {
     active_sessions=$(get_ssh_sessions)
 
     report+="
-── ACTIVE SSH SESSIONS ──────────────────────────────
+── ACTIVE SESSIONS ──────────────────────────────────
 "
     if [[ -n "${active_sessions}" ]]; then
         report+="${YELLOW}[!] Users currently logged in:${RESET}
@@ -667,7 +667,7 @@ compare() {
     if [[ "${changes}" -eq 1 ]]; then
         # Rate-limit based on diff content only — not SSH sessions which change every hour
         local diff_hash
-        diff_hash=$(echo "${report}" | grep -A999 'PROCESSES' | grep -v 'ACTIVE SSH SESSIONS' | sha256sum | awk '{print $1}')
+        diff_hash=$(echo "${report}" | grep -A999 'PROCESSES' | grep -v 'ACTIVE SESSIONS' | sha256sum | awk '{print $1}')
         send_alert "${report_file}" "${diff_hash}"
     fi
 }
