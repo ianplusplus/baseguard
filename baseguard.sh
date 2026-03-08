@@ -125,10 +125,19 @@ check_privileges() {
 # ── Data collection ───────────────────────────────────────────────────────────
 
 get_processes() {
-    # Filter transient kernel and mail worker processes that cause false positives
+    # Filter transient processes that cause false positives:
+    # - kworker threads change task names constantly
+    # - postfix workers appear briefly during email sends
+    # - sshd session processes appear/disappear with connections
+    # - cron execution processes only exist while cron is running the script
+    # - fwupd runs intermittently for firmware checks
+    # - sudo/bash/sh invocations of this script are transient
     ps -eo user,cmd --no-headers \
         | grep -v '\[kworker/' \
         | grep -v '^postfix\s\+cleanup\|^postfix\s\+smtp\|^postfix\s\+trivial-rewrite\|^postfix\s\+bounce\|^postfix\s\+local\|^postfix\s\+pipe\|^postfix\s\+virtual' \
+        | grep -v '^sshd\s\+sshd:' \
+        | grep -v '/usr/sbin/CRON\|/bin/sh -c.*baseline_monitor\|sudo.*baseline_monitor\|fwupd' \
+        | grep -v '^[a-z]\+\s\+-bash$\|^[a-z]\+\s\+-sh$' \
         | sort -u
 }
 
@@ -137,6 +146,7 @@ get_network() {
         ss -lntup 2>/dev/null \
             | tail -n +2 \
             | awk '{print $1, $2, $5, $7}' \
+            | sed 's/,fd=[0-9]*//' \
             | sort -u
     else
         netstat -lntup 2>/dev/null \
@@ -253,6 +263,33 @@ get_user_accounts() {
     }
 }
 
+
+get_ssh_sessions() {
+    # Active SSH sessions — tracked separately from processes since they are
+    # intentionally transient but we still want to know who is connected
+    who 2>/dev/null | grep -v '^$' | sort -u || true
+}
+
+get_failed_logins() {
+    # Show failed SSH login attempts since the last hour
+    # Uses auth.log on Debian/Ubuntu, secure on RHEL/CentOS
+    local auth_log=""
+    if [[ -f /var/log/auth.log ]]; then
+        auth_log="/var/log/auth.log"
+    elif [[ -f /var/log/secure ]]; then
+        auth_log="/var/log/secure"
+    else
+        echo "No auth log found"
+        return
+    fi
+
+    # Filter to last hour and extract failed attempts
+    local since
+    since=$(date -d "1 hour ago" '+%b %e %H:%M' 2>/dev/null || date -v-1H '+%b %e %H:%M' 2>/dev/null)
+
+    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null         | grep -v "^$"         | tail -50         | awk '{print $1, $2, $3, $0}'         | sort -u         || true
+}
+
 # ── Suspicious port detection ─────────────────────────────────────────────────
 
 flag_suspicious_ports() {
@@ -323,7 +360,12 @@ send_alert() {
 
     [[ -z "${ALERT_EMAIL:-}" ]] && return
 
-    report_hash=$(sha256sum "${report_file}" | awk '{print $1}')
+    # Use provided hash if given (e.g. diff-only hash), otherwise hash the full report
+    if [[ -n "${2:-}" ]]; then
+        report_hash="$2"
+    else
+        report_hash=$(sha256sum "${report_file}" | awk '{print $1}')
+    fi
     if [[ -f "${ALERT_HASH_FILE}" ]]; then
         local last_hash
         last_hash=$(cat "${ALERT_HASH_FILE}")
@@ -544,6 +586,57 @@ compare() {
         changes=1
     fi
 
+    # ── Active SSH sessions (always reported, not diffed) ────────────────────
+    local active_sessions
+    active_sessions=$(get_ssh_sessions)
+
+    report+="
+── ACTIVE SSH SESSIONS ──────────────────────────────
+"
+    if [[ -n "${active_sessions}" ]]; then
+        report+="${YELLOW}[!] Users currently logged in:${RESET}
+"
+        while IFS= read -r line; do
+            [[ -z "${line}" ]] && continue
+            report+="    ${line}
+"
+        done <<< "${active_sessions}"
+        report+="
+"
+    else
+        report+="${GREEN}    No active sessions.${RESET}
+"
+    fi
+
+    # ── Failed login attempts (always reported, not diffed) ──────────────────
+    local failed_logins
+    failed_logins=$(get_failed_logins)
+
+    report+="
+── FAILED LOGIN ATTEMPTS (last hour) ────────────────
+"
+    if [[ -n "${failed_logins}" && "${failed_logins}" != "No auth log found" ]]; then
+        report+="${RED}[!] Failed login attempts detected:${RESET}
+"
+        local count=0
+        while IFS= read -r line; do
+            [[ -z "${line}" ]] && continue
+            # Extract just the relevant parts: time, method, user, source IP
+            local summary
+            summary=$(echo "${line}" | grep -oP '(\w+\s+\d+\s+\d+:\d+:\d+).*?(Failed password for( invalid user)? \S+|Invalid user \S+).*?from \S+' || echo "${line}")
+            report+="    ${summary}
+"
+            (( count++ )) || true
+        done <<< "${failed_logins}"
+        report+="
+    Total: ${count} failed attempt(s)
+
+"
+    else
+        report+="${GREEN}    No failed login attempts in the last hour.${RESET}
+"
+    fi
+
     # ── Summary ───────────────────────────────────────────────────────────────
     local timestamp baseline_date
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -572,7 +665,10 @@ compare() {
     echo -e "${CYAN}[i] Report saved to: ${report_file}${RESET}"
 
     if [[ "${changes}" -eq 1 ]]; then
-        send_alert "${report_file}"
+        # Rate-limit based on diff content only — not SSH sessions which change every hour
+        local diff_hash
+        diff_hash=$(echo "${report}" | grep -A999 'PROCESSES' | grep -v 'ACTIVE SSH SESSIONS' | sha256sum | awk '{print $1}')
+        send_alert "${report_file}" "${diff_hash}"
     fi
 }
 
