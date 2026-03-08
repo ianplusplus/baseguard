@@ -146,7 +146,7 @@ get_network() {
         ss -lntup 2>/dev/null \
             | tail -n +2 \
             | awk '{print $1, $2, $5, $7}' \
-            | sed 's/,fd=[0-9]*//' \
+            | sed 's/,fd=[0-9]*//g' \
             | sort -u
     else
         netstat -lntup 2>/dev/null \
@@ -227,7 +227,7 @@ get_kernel_modules() {
 
 get_suid_binaries() {
     # SUID files outside expected system paths are a red flag for privilege escalation implants
-    find / -xdev -perm -4000 -type f 2>/dev/null | sort -u
+    find / -xdev -perm -4000 -type f 2>/dev/null | sort -u || true
 }
 
 get_ssh_config() {
@@ -287,7 +287,11 @@ get_failed_logins() {
     local since
     since=$(date -d "1 hour ago" '+%b %e %H:%M' 2>/dev/null || date -v-1H '+%b %e %H:%M' 2>/dev/null)
 
-    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null         | grep -v "^$"         | tail -50         | awk '{print $1, $2, $3, $0}'         | sort -u         || true
+    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null \
+        | grep -v "^$" \
+        | tail -50 \
+        | sort -u \
+        || true
 }
 
 # ── Suspicious port detection ─────────────────────────────────────────────────
@@ -416,9 +420,14 @@ section_diff() {
     local -n _report="$4"   # nameref — appends into caller's variable
     local -n _changes="$5"
 
-    local added removed
-    added=$(comm -13 "${baseline}" "${current}")
-    removed=$(comm -23 "${baseline}" "${current}")
+    local added removed _sorted_base _sorted_cur
+    _sorted_base=$(mktemp)
+    _sorted_cur=$(mktemp)
+    sort "${baseline}" > "${_sorted_base}"
+    sort "${current}"  > "${_sorted_cur}"
+    added=$(comm -13 "${_sorted_base}" "${_sorted_cur}")
+    removed=$(comm -23 "${_sorted_base}" "${_sorted_cur}")
+    rm -f "${_sorted_base}" "${_sorted_cur}"
 
     _report+="\n── ${label} ────────────────────────────────────────────\n"
 
@@ -449,7 +458,7 @@ section_diff() {
 
 create_baseline() {
     mkdir -p "${BASELINE_DIR}" "${REPORTS_DIR}" "${BACKUP_DIR}"
-    chmod 700 "${BASELINE_DIR}"
+    chmod 700 "${BASELINE_DIR}" "${REPORTS_DIR}" "${BACKUP_DIR}"
 
     echo -e "${CYAN}[*] Capturing baseline...${RESET}"
 
@@ -517,7 +526,7 @@ create_baseline() {
     echo ""
     echo -e "${CYAN}[i] To automate hourly checks via cron:${RESET}"
     echo    "    sudo crontab -e"
-    echo    "    0 * * * * $(realpath "$0") >> ${REPORTS_DIR}/cron.log 2>&1"
+    echo    "    0 * * * * umask 077; $(realpath "$0") >> ${REPORTS_DIR}/cron.log 2>&1"
 }
 
 # ── Comparison ────────────────────────────────────────────────────────────────
