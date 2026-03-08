@@ -148,8 +148,10 @@ sudo crontab -e
 
 Add:
 ```
-0 * * * * /usr/local/bin/baseguard.sh >> /root/.baseline_monitor/reports/cron.log 2>&1
+0 * * * * umask 077; /usr/local/bin/baseguard.sh >> /root/.baseline_monitor/reports/cron.log 2>&1
 ```
+
+> The `umask 077` ensures `cron.log` is created `600` (owner-only). Without it, shell redirection uses the default umask and the log file may be world-readable.
 
 ---
 
@@ -182,7 +184,7 @@ Add:
 
 **Kernel rootkits** — if a rootkit has compromised the kernel, it can hide processes and ports from `ps` and `ss`. This script cannot detect what the kernel itself conceals.
 
-**Baseline integrity** — all baseline files are protected with SHA256 hashes and `chmod 600` permissions. The baseline directory is `chmod 700`. If the integrity check fails at comparison time, the script will refuse to run and alert you to possible tampering.
+**Baseline integrity** — all baseline files are protected with SHA256 hashes and `chmod 600` permissions. The baseline directory and its `backups/` and `reports/` subdirectories are all `chmod 700`. If the integrity check fails at comparison time, the script will refuse to run and alert you to possible tampering.
 
 ---
 
