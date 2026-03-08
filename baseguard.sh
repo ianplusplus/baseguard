@@ -238,14 +238,16 @@ get_ssh_config() {
         /root/.ssh/authorized_keys
         "${HOME}/.ssh/authorized_keys"
     )
-    for f in "${ssh_files[@]}"; do
-        [[ -f "${f}" ]] || continue
-        sha256sum "${f}" 2>/dev/null || true
-    done
-    if [[ -d /etc/ssh/sshd_config.d ]]; then
-        find /etc/ssh/sshd_config.d -type f 2>/dev/null \
-            | sort | xargs sha256sum 2>/dev/null || true
-    fi
+    {
+        for f in "${ssh_files[@]}"; do
+            [[ -f "${f}" ]] || continue
+            sha256sum "${f}" 2>/dev/null || true
+        done
+        if [[ -d /etc/ssh/sshd_config.d ]]; then
+            find /etc/ssh/sshd_config.d -type f 2>/dev/null \
+                | sort | xargs sha256sum 2>/dev/null || true
+        fi
+    } | sort -u
 }
 
 get_user_accounts() {
@@ -287,11 +289,7 @@ get_failed_logins() {
     local since
     since=$(date -d "1 hour ago" '+%b %e %H:%M' 2>/dev/null || date -v-1H '+%b %e %H:%M' 2>/dev/null)
 
-    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null \
-        | grep -v "^$" \
-        | tail -50 \
-        | sort -u \
-        || true
+    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null         | grep -v "^$"         | tail -50         | sort -u         || true
 }
 
 # ── Suspicious port detection ─────────────────────────────────────────────────
@@ -420,14 +418,14 @@ section_diff() {
     local -n _report="$4"   # nameref — appends into caller's variable
     local -n _changes="$5"
 
-    local added removed _sorted_base _sorted_cur
-    _sorted_base=$(mktemp)
-    _sorted_cur=$(mktemp)
-    sort "${baseline}" > "${_sorted_base}"
-    sort "${current}"  > "${_sorted_cur}"
-    added=$(comm -13 "${_sorted_base}" "${_sorted_cur}")
-    removed=$(comm -23 "${_sorted_base}" "${_sorted_cur}")
-    rm -f "${_sorted_base}" "${_sorted_cur}"
+    local added removed sorted_baseline sorted_current
+    sorted_baseline=$(mktemp)
+    sorted_current=$(mktemp)
+    sort "${baseline}" > "${sorted_baseline}"
+    sort "${current}"  > "${sorted_current}"
+    added=$(comm -13 "${sorted_baseline}" "${sorted_current}")
+    removed=$(comm -23 "${sorted_baseline}" "${sorted_current}")
+    rm -f "${sorted_baseline}" "${sorted_current}"
 
     _report+="\n── ${label} ────────────────────────────────────────────\n"
 
@@ -756,4 +754,3 @@ case "${1:-}" in
             create_baseline
         fi
         ;;
-esac
