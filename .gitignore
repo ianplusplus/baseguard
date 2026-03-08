@@ -1,0 +1,18 @@
+# ── AI/Dev context and testing (not for public repo) ─────────────────────────
+CONTEXT.md
+TEST_PLAN.md
+
+# ── OS / editor artifacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# ── Baseline data (generated at runtime, never committed) ─────────────────────
+.baseline_monitor/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
