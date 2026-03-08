@@ -754,3 +754,4 @@ case "${1:-}" in
             create_baseline
         fi
         ;;
+esac
