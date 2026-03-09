@@ -213,7 +213,7 @@ get_binary_hashes() {
         [[ -d "${dir}" ]] || continue
         find "${dir}" -maxdepth 1 -type f -executable -print0 2>/dev/null \
             | sort -z \
-            | xargs -0 sha256sum 2>/dev/null \
+            | xargs -r -0 sha256sum 2>/dev/null \
             || true
     done
 }
@@ -635,7 +635,10 @@ compare() {
     report+="
 ── FAILED LOGIN ATTEMPTS (last hour) ────────────────
 "
-    if [[ -n "${failed_logins}" && "${failed_logins}" != "No auth log found" ]]; then
+    if [[ "${failed_logins}" == "No auth log found" ]]; then
+        report+="${YELLOW}[!] No auth log found (/var/log/auth.log and /var/log/secure absent).${RESET}
+"
+    elif [[ -n "${failed_logins}" ]]; then
         report+="${RED}[!] Failed login attempts detected:${RESET}
 "
         local count=0
