@@ -2,7 +2,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# baseline_monitor.sh — Mini HIDS
+BASEGUARD_VERSION="1.0.0"
+
+# baseguard.sh — Mini HIDS
 #
 # Monitors: processes, listening ports, systemd units, cron jobs, binary hashes
 #
@@ -10,16 +12,16 @@ IFS=$'\n\t'
 # Later runs : verifies baseline integrity, compares, saves timestamped report
 #
 # Usage:
-#   ./baseline_monitor.sh             # create baseline or compare
-#   ./baseline_monitor.sh --reset     # backup + delete baseline for a fresh one
-#   ./baseline_monitor.sh --help      # show usage
+#   ./baseguard.sh             # create baseline or compare
+#   ./baseguard.sh --reset     # backup + delete baseline for a fresh one
+#   ./baseguard.sh --help      # show usage
 #
 # Recommended: run as root for full visibility
-#   sudo ./baseline_monitor.sh
+#   sudo ./baseguard.sh
 #
 # Email alerts: export ALERT_EMAIL=you@example.com
 
-BASELINE_DIR="${HOME}/.baseline_monitor"
+BASELINE_DIR="${HOME}/.baseguard"
 PROCESS_BASELINE="${BASELINE_DIR}/processes.baseline"
 NETWORK_BASELINE="${BASELINE_DIR}/network.baseline"
 SYSTEMD_BASELINE="${BASELINE_DIR}/systemd.baseline"
@@ -138,7 +140,7 @@ get_processes() {
         | grep -v '^sshd\s\+sshd:' \
         | grep -v 'sshd: .*@pts/' \
         | grep -v 'sshd: .* \[priv\]' \
-        | grep -v '/usr/sbin/CRON\|/bin/sh -c.*baseline_monitor\|sudo.*baseline_monitor\|fwupd' \
+        | grep -v '/usr/sbin/CRON\|/bin/sh -c.*baseguard\|sudo.*baseguard\|fwupd' \
         | grep -v '^[a-z]\+\s\+-bash$\|^[a-z]\+\s\+-sh$' \
         | sort -u
 }
@@ -390,7 +392,7 @@ send_alert() {
         fi
     fi
 
-    local subject="[baseline_monitor] Changes detected on $(hostname) at $(date '+%Y-%m-%d %H:%M')"
+    local subject="[baseguard] Changes detected on $(hostname) at $(date '+%Y-%m-%d %H:%M')"
     local sent=0
 
     # mailx behaves differently across distros — try multiple invocations
@@ -712,7 +714,7 @@ reset_baseline() {
 print_header() {
     echo -e "${BOLD}${CYAN}"
     echo "================================================"
-    echo "  System Baseline Monitor"
+    echo "  baseguard v${BASEGUARD_VERSION}"
     echo "  $(hostname)  |  $(date '+%Y-%m-%d %H:%M:%S')"
     echo "================================================"
     echo -e "${RESET}"
@@ -729,6 +731,7 @@ case "${1:-}" in
         reset_baseline
         ;;
     --help|-h)
+        echo "baseguard v${BASEGUARD_VERSION}"
         echo "Usage: $0 [--reset | --help]"
         echo ""
         echo "  (no args)  Create baseline if none exists, otherwise compare"
