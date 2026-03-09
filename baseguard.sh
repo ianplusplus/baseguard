@@ -136,6 +136,8 @@ get_processes() {
         | grep -v '\[kworker/' \
         | grep -v '^postfix\s\+cleanup\|^postfix\s\+smtp\|^postfix\s\+trivial-rewrite\|^postfix\s\+bounce\|^postfix\s\+local\|^postfix\s\+pipe\|^postfix\s\+virtual' \
         | grep -v '^sshd\s\+sshd:' \
+        | grep -v 'sshd: .*@pts/' \
+        | grep -v 'sshd: .* \[priv\]' \
         | grep -v '/usr/sbin/CRON\|/bin/sh -c.*baseline_monitor\|sudo.*baseline_monitor\|fwupd' \
         | grep -v '^[a-z]\+\s\+-bash$\|^[a-z]\+\s\+-sh$' \
         | sort -u
@@ -286,10 +288,21 @@ get_failed_logins() {
     fi
 
     # Filter to last hour and extract failed attempts
-    local since
-    since=$(date -d "1 hour ago" '+%b %e %H:%M' 2>/dev/null || date -v-1H '+%b %e %H:%M' 2>/dev/null)
+    # Prefer journalctl for accurate time filtering; fall back to file-based grep
+    if command -v journalctl &>/dev/null; then
+        journalctl --since "1 hour ago" --no-pager -q 2>/dev/null \
+            | grep "Failed password\|Invalid user\|authentication failure" \
+            | grep -v "^$" \
+            | sort -u \
+            || true
+        return
+    fi
 
-    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null         | grep -v "^$"         | tail -50         | sort -u         || true
+    grep "Failed password\|Invalid user\|authentication failure" "${auth_log}" 2>/dev/null \
+        | grep -v "^$" \
+        | tail -50 \
+        | sort -u \
+        || true
 }
 
 # ── Suspicious port detection ─────────────────────────────────────────────────
