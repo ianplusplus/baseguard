@@ -148,7 +148,7 @@ sudo crontab -e
 
 Add:
 ```
-0 * * * * umask 077; /usr/local/bin/baseguard.sh >> /root/.baseline_monitor/reports/cron.log 2>&1
+0 * * * * umask 077; /usr/local/bin/baseguard.sh >> /root/.baseguard/reports/cron.log 2>&1
 ```
 
 > The `umask 077` ensures `cron.log` is created `600` (owner-only). Without it, shell redirection uses the default umask and the log file may be world-readable.
@@ -158,7 +158,7 @@ Add:
 ## File Structure
 
 ```
-~/.baseline_monitor/
+~/.baseguard/
 ├── processes.baseline       # Baseline process snapshot
 ├── network.baseline         # Baseline listening ports
 ├── systemd.baseline         # Baseline enabled systemd units
